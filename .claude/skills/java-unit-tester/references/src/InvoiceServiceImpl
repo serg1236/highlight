@@ -1,0 +1,61 @@
+package com.example.billing.service.impl;
+
+import com.example.billing.domain.FilterPreset;
+import com.example.billing.domain.InvoiceDailyReportDto;
+import com.example.billing.domain.InvoiceReportRequestDto;
+import com.example.billing.repository.CustomerRepository;
+import com.example.billing.repository.FilterPresetRepository;
+import com.example.billing.repository.InvoiceReportRepository;
+import com.example.billing.security.ReportAuthorizationContext;
+import com.example.billing.service.ReportUsageLogService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.util.List;
+import java.util.Set;
+
+@Service
+@RequiredArgsConstructor
+public class InvoiceServiceImpl {
+
+	private static final String INVOICE_SUMMARY_REPORT_KEY = "invoice-summary";
+
+	private final InvoiceReportRepository invoiceReportRepository;
+	private final CustomerRepository customerRepository;
+	private final FilterPresetRepository filterPresetRepository;
+	private final ReportAuthorizationContext authorizationContext;
+	private final ReportUsageLogService reportUsageLogService;
+
+	public List<InvoiceDailyReportDto> getInvoiceSummaryReport(InvoiceReportRequestDto request,
+			String tenantCode,
+			String userIdentifier) {
+		this.reportUsageLogService.logReportOpenIfUnique(INVOICE_SUMMARY_REPORT_KEY, request, tenantCode, userIdentifier);
+		validateCustomersExist(request.getCustomerIds());
+
+		var filterPreset = StringUtils.hasText(request.getFilterPresetName())
+				? getFilterPresetOrThrow(tenantCode, request.getFilterPresetName())
+				: null;
+
+		return request.getDateFrom().datesUntil(request.getDateTo().plusDays(1))
+				.map(date -> new InvoiceDailyReportDto(date,
+						this.invoiceReportRepository.fetchLines(request, date, filterPreset, tenantCode)))
+				.toList();
+	}
+
+	private void validateCustomersExist(Set<Long> customerIds) {
+		if (!this.customerRepository.existsAllByIds(customerIds)) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
+		}
+	}
+
+	private FilterPreset getFilterPresetOrThrow(String tenantCode, String name) {
+		if (!this.authorizationContext.hasViewPresetsPermission(tenantCode)) {
+			throw new ResponseStatusException(HttpStatus.FORBIDDEN);
+		}
+		return this.filterPresetRepository.findByTenantAndName(tenantCode, name)
+				.orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST));
+	}
+}

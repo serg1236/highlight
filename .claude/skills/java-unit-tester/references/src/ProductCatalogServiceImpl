@@ -1,0 +1,34 @@
+package com.example.catalog.service.impl;
+
+import com.example.catalog.domain.ProductDto;
+import com.example.catalog.repository.LegacyCatalogRepository;
+import com.example.catalog.repository.ModernCatalogRepository;
+import com.example.catalog.service.ProductCatalogService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+
+@Service
+@RequiredArgsConstructor
+public class ProductCatalogServiceImpl implements ProductCatalogService {
+
+	private final LegacyCatalogRepository legacyCatalogRepository;
+	private final ModernCatalogRepository modernCatalogRepository;
+
+	@Override
+	public List<ProductDto> searchProducts(String pattern) {
+		var legacyProducts = this.legacyCatalogRepository.search(pattern);
+		var modernProducts = this.modernCatalogRepository.searchWithStock(pattern);
+
+		var mergedByCode = new LinkedHashMap<String, ProductDto>();
+		legacyProducts.forEach(product -> mergedByCode.put(product.getCode(), product));
+		modernProducts.forEach(product -> mergedByCode.putIfAbsent(product.getCode(), product));
+
+		return mergedByCode.values().stream()
+				.sorted(Comparator.comparing(ProductDto::getCode))
+				.toList();
+	}
+}

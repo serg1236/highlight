@@ -1,0 +1,98 @@
+package com.example.catalog.service.impl;
+
+import com.example.catalog.domain.ProductDto;
+import com.example.catalog.repository.LegacyCatalogRepository;
+import com.example.catalog.repository.ModernCatalogRepository;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.Mockito.when;
+
+@ExtendWith(MockitoExtension.class)
+class ProductCatalogServiceImplTest {
+	@Mock
+	private LegacyCatalogRepository legacyCatalogRepository;
+	@Mock
+	private ModernCatalogRepository modernCatalogRepository;
+	@InjectMocks
+	private ProductCatalogServiceImpl service;
+
+	@Test
+	void searchProducts_productsExistInBothSources_returnsCombinedResult() {
+		// given
+		String pattern = "widget";
+
+		when(this.legacyCatalogRepository.search(pattern)).thenReturn(
+				List.of(new ProductDto("B", "Legacy B"), new ProductDto("C", "Legacy C")));
+		when(this.modernCatalogRepository.searchWithStock(pattern)).thenReturn(
+				List.of(new ProductDto("D", "Modern D")));
+
+		var expected = List.of(
+				new ProductDto("B", "Legacy B"),
+				new ProductDto("C", "Legacy C"),
+				new ProductDto("D", "Modern D")
+		);
+
+		// when
+		var actual = this.service.searchProducts(pattern);
+
+		// then
+		assertEquals(expected, actual);
+	}
+
+	@Test
+	void searchProducts_sameCodeInBothSources_returnsLegacyProduct() {
+		// given
+		String code = "A";
+
+		when(this.legacyCatalogRepository.search(code)).thenReturn(List.of(new ProductDto(code, "legacy")));
+		when(this.modernCatalogRepository.searchWithStock(code)).thenReturn(List.of(new ProductDto(code, "modern")));
+
+		var expected = List.of(new ProductDto(code, "legacy"));
+
+		// when
+		var actual = this.service.searchProducts(code);
+
+		// then
+		assertEquals(expected, actual);
+	}
+
+	@Test
+	void searchProducts_emptyModern_returnsLegacyOnly() {
+		// given
+		when(this.legacyCatalogRepository.search(null)).thenReturn(
+				List.of(new ProductDto("A", "A"), new ProductDto("B", "B")));
+		when(this.modernCatalogRepository.searchWithStock(null)).thenReturn(List.of());
+
+		var expected = List.of(new ProductDto("A", "A"), new ProductDto("B", "B"));
+
+		// when
+		var actual = this.service.searchProducts(null);
+
+		// then
+		assertEquals(expected, actual);
+	}
+
+	@Test
+	void searchProducts_emptyLegacy_returnsModernOnly() {
+		// given
+		String pattern = "X";
+
+		when(this.legacyCatalogRepository.search(pattern)).thenReturn(List.of());
+		when(this.modernCatalogRepository.searchWithStock(pattern)).thenReturn(List.of(new ProductDto("X", "Modern X")));
+
+		var expected = List.of(new ProductDto("X", "Modern X"));
+
+		// when
+		var actual = this.service.searchProducts(pattern);
+
+		// then
+		assertEquals(expected, actual);
+	}
+}

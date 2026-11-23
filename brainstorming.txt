@@ -1,0 +1,120 @@
+<Serhii>
+
+I need to validate the following idea for AI Hackathon.
+
+I would like to create an app that will parse novels and generate short comics (up to 10 frames) that illustrate some dialog scenes from the books.
+
+The flow should be as follows:
+
+User uploads novel (ebub, pdf, docx etc.)
+Then we need to extract all characters and their appearance descriptions. There are two options:
+use very cheap model to process book chunk by chunk and mark where charachets description appear
+Use some RAG or similar for further description search
+Then we ask AI to generate character images based on descriptions and store them in DB. User will be able to alter appearance with extra prompt.
+After all that preprocessing user finally can ask to generate a comics by simple prompts like: "First meeting between Edward and Bella in school":
+We search for the exact scene (I guess we'll need some RAG to be applied to the novel for that)
+Ask AI to generate scenario and frame templates.
+Upload scenarion and previously stored character images to some other image generating model and get back the comic image
+Maybe we'll ask it to leave speech bubbles blank and add text afterwards algorithmically to omit text hallucinations
+Along with that user gets all need CRUD for comics and uploaded files.
+
+Please define the risks and let me know if this idea is feasible. Don't be too supportive. Be realistic.
+
+<AI>
+
+I'll check the current state of image models for character consistency, since that's the part of this idea most likely to break.
+
+Verdict
+
+As a hackathon demo, this is feasible if you cut the scope a lot. As written (any uploaded book, all characters extracted and drawn upfront, 10 consistent panels, full CRUD), it won't work reliably in 24–48 hours.
+
+Most of the pipeline is plumbing you can build. The part judges will actually look at is the final image, and that's the part you control least. Several of your design choices also point the hard parts at the wrong tools.
+
+Risks, worst first
+
+1. Panel consistency and layout (high risk, and it decides the demo)
+
+Models are much better at this in 2026. Top-tier ones take many reference images in one call: Nano Banana Pro supports up to 14 reference images. But reference-based consistency still has limits. It works for short runs of 5 to 10 images. Drifts on longer projects. Unusual angles break it too: a character leaping mid-air from behind is a composition the reference sheet does not cover, so the model extrapolates and sometimes loses the face. Expect these failures:
+> ## Documentation Index
+ +2
+
+Traits leaking between characters. With two people in a panel, hair colour, clothes or faces swap between them. Dialog scenes always have at least two people, so you'll hit this constantly.
+Generating the whole page in one call: the model will often get the panel count wrong, scramble the reading order or merge panels. Generating each panel separately gives you control, but costs 10× more calls and adds drift between panels.
+Blank speech bubbles are harder than they sound. Models often fill them with fake text, skip them, put them in the wrong spot or point the tail at the wrong character. You'd also need to detect where each bubble ended up before you can fill it. Better: generate panels with no bubbles, ask for empty space at the top, and draw the bubbles and text yourself in code.
+Speed: 10 panels plus retries takes minutes unless you run them in parallel. That's a long wait on stage.
+
+2. Copyright and safety filters (high risk, and your own example triggers it)
+
+"Edward and Bella" is the worst case. There's a famous film adaptation, so the model may draw the actors' faces, or refuse because of rules on real people and protected IP. Novels also contain violence, biting, romance and so on, and safety filters will reject panels partway through a comic with nothing useful in the error. Separately, storing users' copyrighted books and making derivative art from them is a real legal problem for a product, and a judge will probably ask about it. For the demo, use a public-domain book (Sherlock Holmes, Pride and Prejudice, Dracula). That avoids both problems.
+
+3. Character extraction is messier than "find the descriptions" (medium–high)
+
+Descriptions are sparse, scattered and often implied ("she pushed her dark hair back"). They sometimes contradict each other or change over the book (haircuts, injuries, ageing).
+First-person narrators rarely describe themselves. Bella is deliberately left vague. Many minor characters are never described at all, so the model will invent them and present the guess as fact.
+One character has many names. "Edward", "Cullen", "he", "the vampire" all refer to the same person. A cheap model working chunk by chunk will create duplicates or wrongly merge different people. You need a separate merge step afterwards.
+Your option 2 (RAG for descriptions) is the weaker option. A line like "my pale skin" isn't semantically close to "what does Bella look like", so vector search misses it. Option 1, a full pass over the text, is the right call. A whole novel is only about 150–250k tokens, so processing all of it is cheap.
+
+4. RAG is the wrong tool for finding scenes (medium–high)
+
+"First meeting between Edward and Bella in school" needs to know what happens first. Vector search can't do ordering. It will return the chunks that mention Edward and Bella together, which is half the book. The fix is to build a scene index during ingestion: split the book into scenes, and for each one store a summary, who's present, the location and the chapter position. At query time, give the LLM the whole scene list (a few hundred lines fits easily) and let it pick the scene. You may not need a vector DB at all.
+
+5. Turning a scene into a script (medium)
+
+A real dialog scene might have 40 lines spread over 4 pages, and you have to fit it into 6–10 panels. Novels also often leave out who's speaking (lines just alternate without "he said"), and the LLM will sometimes assign a line to the wrong character. Show the source quote under each panel so mistakes are visible and can be fixed.
+
+6. File parsing (medium, mostly a PDF problem)
+
+EPUB and DOCX are easy. PDF is a mess: page headers and footers, page numbers, words hyphenated across lines, and scanned files that need OCR. For the hackathon, support EPUB and TXT, and treat PDF as best-effort.
+
+7. Cost and wait times (low for a hackathon, matters for a product)
+
+Nano Banana Pro runs about $0.134 per 1K/2K image and $0.24 per 4K image. The cheaper Flash tier starts at $0.039 per generated image. With retries, one comic costs roughly $1–3. Drawing every character upfront wastes money and makes users wait, so generate a portrait only when a requested scene needs that character.
+tech-insider
+myarchitectai
+
+8. Originality (medium)
+
+Judges have seen plenty of "AI comic generator" projects. What makes yours different is that it's grounded in the source text. Make that visible: show every appearance trait with the quote it came from, and every panel with the passage it adapts. Otherwise it looks like a wrapper around an image API.
+
+A version that can survive a demo
+Ingest: EPUB/TXT into clean text, keeping chapter positions.
+One structured extraction pass (mid-tier LLM, chunked): scene boundaries and summaries, who's present in each, character name variants, and exact appearance quotes with their locations.
+Merge step: combine name variants into one entry per character, with traits cited to quotes. Fields with no evidence are marked "not described" instead of guessed.
+Lazy portraits: a reference sheet for each character, generated on first use. The user can tweak it with an extra prompt.
+Comic request: the LLM picks a scene from the index, then writes a 4–6 panel script from that scene's full text. Each panel gets a speaker, the exact line, a shot type and the list of characters visible.
+Panels: generate each panel separately, passing references only for the characters in that panel plus one style reference. No text in the image.
+Layout, bubbles and text: done in code. Place bubbles with a simple left/right rule or a quick vision-model call to find each character.
+
+What to cut: CRUD (judges don't care), PDF, arbitrary user uploads during the live demo, and 10-panel comics.
+
+Demo safety: process the demo book in advance and cache one good comic as a fallback. Image models give different results on every run and will eventually give you a bad one on stage.
+
+Want me to put this into a doc your team can work from?
+
+<Serhii>
+
+Don't we get a higher risk of different appearances for the same characters and different scene if we generate frames in parallel? Maybe it's better to generate first "master frame" and then ask model to change it for each new frame?
+
+<AI>
+
+Partly right. Running the calls in parallel isn't what causes the drift. Each call is stateless, so a parallel call with the same reference images is just as consistent as a sequential one. Drift comes from what you condition each panel on and how far the pose and angle are from the references.
+
+Your concern about the scene, though, is real. Character reference sheets fix faces and outfits, but not the room, the lighting, the time of day or the colour palette. Panel 3 can end up in a different classroom than panel 2. A master frame helps with that.
+
+Chaining edits (panel N made by editing panel N−1) has three problems of its own:
+
+Errors build up. If panel 3 gets the jaw slightly wrong, every later panel inherits it. After 6–8 edits a character can look different from their reference sheet even though no single step looked bad. It's like a game of telephone.
+Edits stick to the original composition. Edit models try to preserve the source image, so you get the same camera angle and framing over and over. Comics need variety (wide shots, close-ups, reaction shots), and a chain of edits fights against that.
+It's slow. 10 panels in a row means 10 waits back to back, plus retries. On stage, that's minutes.
+
+What I'd do instead: a star, not a chain.
+
+Generate the master frame first, as an establishing shot with all the scene's characters in the location. Make 2–3 versions and pick the best, automatically or by asking the user.
+Generate all other panels in parallel. Each one gets the character reference sheets, the master frame as a reference for setting and style (not as an image to edit), and a fixed text "scene bible": location, lighting, palette, and what each character wears in this scene.
+Run an automatic check on each panel (a vision model comparing faces to the reference sheets, or face-embedding similarity) and regenerate only the panels that fail.
+
+This way every panel is one step from the canonical references, so errors can't build up, and the whole comic takes about two rounds of waiting instead of ten.
+
+Where editing does help: consecutive panels with the same framing, like a reaction shot or two characters cutting back and forth in conversation. There, "same panel, but she's now frowning" really is the best tool. Use it for specific pairs of panels, not as the main method.
+
+There's also a middle option. Some models support multi-turn sessions, where the model keeps earlier images in context. Google advertises a documented "multi-turn character consistency" feature for its newer Nano Banana model. But the same tutorial points out that you still need to explicitly re-attach the locked reference images rather than assuming the model remembers a character from an earlier call. In practice that brings you back to the star setup anyway, just slower.

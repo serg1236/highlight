@@ -1,0 +1,135 @@
+package com.example.billing.service.impl;
+
+import com.example.billing.domain.FilterPreset;
+import com.example.billing.domain.InvoiceLineDto;
+import com.example.billing.domain.InvoiceReportRequestDto;
+import com.example.billing.repository.CustomerRepository;
+import com.example.billing.repository.FilterPresetRepository;
+import com.example.billing.repository.InvoiceReportRepository;
+import com.example.billing.security.ReportAuthorizationContext;
+import com.example.billing.service.ReportUsageLogService;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+@ExtendWith(MockitoExtension.class)
+class InvoiceServiceImplTest {
+	private static final String USER_IDENTIFIER = "test-user";
+	@Mock
+	private InvoiceReportRepository invoiceReportRepository;
+	@Mock
+	private CustomerRepository customerRepository;
+	@Mock
+	private FilterPresetRepository filterPresetRepository;
+	@Mock
+	private ReportAuthorizationContext authorizationContext;
+	@Mock
+	private ReportUsageLogService reportUsageLogService;
+	@InjectMocks
+	private InvoiceServiceImpl invoiceService;
+
+	@Test
+	void getInvoiceSummaryReport_filterPresetNotFound_throwsException() {
+		// given
+		var request = InvoiceReportRequestDto.builder()
+				.customerIds(Set.of(1L))
+				.dateFrom(LocalDate.of(2024, 6, 1))
+				.dateTo(LocalDate.of(2024, 6, 2))
+				.filterPresetName("missing")
+				.build();
+
+		when(this.customerRepository.existsAllByIds(Set.of(1L))).thenReturn(true);
+		when(this.authorizationContext.hasViewPresetsPermission("TEN1")).thenReturn(true);
+		when(this.filterPresetRepository.findByTenantAndName("TEN1", "missing")).thenReturn(Optional.empty());
+
+		// when
+		var exception = assertThrows(ResponseStatusException.class,
+				() -> this.invoiceService.getInvoiceSummaryReport(request, "TEN1", USER_IDENTIFIER));
+
+		// then
+		assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+		verify(this.reportUsageLogService).logReportOpenIfUnique("invoice-summary", request, "TEN1", USER_IDENTIFIER);
+	}
+
+	@Test
+	void getInvoiceSummaryReport_filterPresetRequestedWithoutPermission_throwsException() {
+		// given
+		var request = InvoiceReportRequestDto.builder()
+				.customerIds(Set.of(1L))
+				.dateFrom(LocalDate.of(2024, 6, 1))
+				.dateTo(LocalDate.of(2024, 6, 2))
+				.filterPresetName("default")
+				.build();
+
+		when(this.customerRepository.existsAllByIds(Set.of(1L))).thenReturn(true);
+		when(this.authorizationContext.hasViewPresetsPermission("TEN1")).thenReturn(false);
+
+		// when
+		var exception = assertThrows(ResponseStatusException.class,
+				() -> this.invoiceService.getInvoiceSummaryReport(request, "TEN1", USER_IDENTIFIER));
+
+		// then
+		assertEquals(HttpStatus.FORBIDDEN, exception.getStatusCode());
+	}
+
+	@Test
+	void getInvoiceSummaryReport_unknownCustomer_throwsException() {
+		// given
+		var request = InvoiceReportRequestDto.builder()
+				.customerIds(Set.of(99L))
+				.dateFrom(LocalDate.of(2024, 6, 1))
+				.dateTo(LocalDate.of(2024, 6, 1))
+				.build();
+
+		when(this.customerRepository.existsAllByIds(Set.of(99L))).thenReturn(false);
+
+		// when
+		var exception = assertThrows(ResponseStatusException.class,
+				() -> this.invoiceService.getInvoiceSummaryReport(request, "TEN1", USER_IDENTIFIER));
+
+		// then
+		assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+	}
+
+	@Test
+	void getInvoiceSummaryReport_validRequest_returnsDailyReports() {
+		// given
+		var request = InvoiceReportRequestDto.builder()
+				.customerIds(Set.of(1L))
+				.dateFrom(LocalDate.of(2024, 6, 1))
+				.dateTo(LocalDate.of(2024, 6, 1))
+				.filterPresetName("default")
+				.build();
+		var filterPreset = new FilterPreset("default", "TEN1");
+
+		when(this.customerRepository.existsAllByIds(Set.of(1L))).thenReturn(true);
+		when(this.authorizationContext.hasViewPresetsPermission("TEN1")).thenReturn(true);
+		when(this.filterPresetRepository.findByTenantAndName("TEN1", "default")).thenReturn(Optional.of(filterPreset));
+		when(this.invoiceReportRepository.fetchLines(request, LocalDate.of(2024, 6, 1), filterPreset, "TEN1"))
+				.thenReturn(List.of(new InvoiceLineDto(1L, "Line")));
+
+		var expected = List.of(new com.example.billing.domain.InvoiceDailyReportDto(
+				LocalDate.of(2024, 6, 1),
+				List.of(new InvoiceLineDto(1L, "Line"))));
+
+		// when
+		var actual = this.invoiceService.getInvoiceSummaryReport(request, "TEN1", USER_IDENTIFIER);
+
+		// then
+		assertEquals(expected, actual);
+	}
+}

@@ -1,0 +1,74 @@
+package com.example.orders.repository;
+
+import com.example.orders.domain.OrderLineRow;
+import com.example.orders.domain.OrdersByCustomer;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.jdbc.core.RowMapper;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
+
+import java.math.BigDecimal;
+import java.sql.ResultSet;
+import java.util.List;
+import java.util.Objects;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
+@ExtendWith(MockitoExtension.class)
+class OrderRepositoryTest {
+	@Mock
+	private NamedParameterJdbcTemplate reportingJdbcTemplate;
+	@InjectMocks
+	private OrderRepository orderRepository;
+
+	@Test
+	void findOrdersByCustomerId_rowsReturned_returnsGroupedOrders() {
+		// given
+		Long customerId = 42L;
+		var expected = List.of(new OrdersByCustomer(customerId, List.of(
+				new OrderLineRow(100L, customerId, new BigDecimal("10.00")),
+				new OrderLineRow(101L, customerId, new BigDecimal("20.00"))
+		)));
+
+		when(this.reportingJdbcTemplate.query(
+				org.mockito.Mockito.eq("""
+						SELECT order_id, customer_id, line_amount
+						FROM sales.orders
+						WHERE customer_id = :customerId
+						"""),
+				any(MapSqlParameterSource.class),
+				any(RowMapper.class))
+		).thenAnswer(invocation -> {
+			@SuppressWarnings("unchecked")
+			RowMapper<OrderLineRow> rowMapper = invocation.getArgument(2);
+
+			ResultSet firstRow = mock(ResultSet.class);
+			when(firstRow.getLong("order_id")).thenReturn(100L);
+			when(firstRow.getLong("customer_id")).thenReturn(customerId);
+			when(firstRow.getBigDecimal("line_amount")).thenReturn(new BigDecimal("10.00"));
+
+			ResultSet secondRow = mock(ResultSet.class);
+			when(secondRow.getLong("order_id")).thenReturn(101L);
+			when(secondRow.getLong("customer_id")).thenReturn(customerId);
+			when(secondRow.getBigDecimal("line_amount")).thenReturn(new BigDecimal("20.00"));
+
+			return List.of(
+					Objects.requireNonNull(rowMapper.mapRow(firstRow, 0)),
+					Objects.requireNonNull(rowMapper.mapRow(secondRow, 1))
+			);
+		});
+
+		// when
+		var actual = this.orderRepository.findOrdersByCustomerId(customerId);
+
+		// then
+		assertEquals(expected, actual);
+	}
+}

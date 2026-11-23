@@ -1,0 +1,43 @@
+package com.example.orders.repository;
+
+import com.example.orders.domain.OrderLineRow;
+import com.example.orders.domain.OrdersByCustomer;
+import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+import java.util.stream.Collectors;
+
+@Repository
+@RequiredArgsConstructor
+public class OrderRepository {
+
+	private static final String FIND_ORDERS_BY_CUSTOMER = """
+			SELECT order_id, customer_id, line_amount
+			FROM sales.orders
+			WHERE customer_id = :customerId
+			""";
+
+	@Qualifier("reportingJdbcTemplate")
+	private final NamedParameterJdbcTemplate reportingJdbcTemplate;
+
+	public List<OrdersByCustomer> findOrdersByCustomerId(Long customerId) {
+		var parameters = new MapSqlParameterSource("customerId", customerId);
+
+		var rows = this.reportingJdbcTemplate.query(FIND_ORDERS_BY_CUSTOMER, parameters, (resultSet, rowNum) ->
+				new OrderLineRow(
+						resultSet.getLong("order_id"),
+						resultSet.getLong("customer_id"),
+						resultSet.getBigDecimal("line_amount")));
+
+		return rows.stream()
+				.collect(Collectors.groupingBy(OrderLineRow::customerId))
+				.entrySet()
+				.stream()
+				.map(entry -> new OrdersByCustomer(entry.getKey(), entry.getValue()))
+				.toList();
+	}
+}
