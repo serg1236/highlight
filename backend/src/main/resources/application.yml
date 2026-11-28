@@ -1,0 +1,53 @@
+spring:
+  application:
+    name: highlight-backend
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/highlight}
+    username: ${DB_USERNAME:admin}
+    password: ${DB_PASSWORD:}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: none
+    properties:
+      hibernate:
+        default_batch_fetch_size: 50
+  flyway:
+    enabled: true
+  servlet:
+    multipart:
+      max-file-size: ${MAX_UPLOAD_SIZE:50MB}
+      max-request-size: ${MAX_UPLOAD_SIZE:50MB}
+
+highlight:
+  anthropic:
+    api-key: ${ANTHROPIC_API_KEY:}
+    base-url: ${ANTHROPIC_BASE_URL:https://api.anthropic.com}
+    model: ${ANTHROPIC_MODEL:claude-haiku-5-5}
+    # Upper bound per call; includes thinking tokens.
+    max-tokens: 32000
+    # low | medium | high | xhigh | max per pass; higher effort spends more output (thinking) tokens.
+    effort:
+      # Character extraction and the character merge.
+      character: medium
+      # Scene extraction and the world synthesis.
+      scene: low
+    timeout: 5m
+    max-retries: 2
+    # USD per 1M tokens. Keep in sync with the model above.
+    pricing:
+      input: 0.10
+      output: 0.50
+      # Prompts with more input tokens than this are billed at the long-context rates.
+      long-context-threshold: 100000
+      long-context-input: 0.50
+      long-context-output: 2.50
+  extraction:
+    # Estimated tokens of book text per extraction call; keeps prompts under the long-context threshold.
+    chunk-max-tokens: 70000
+    # Estimated tokens of book text per scene call. Kept small so the model splits the excerpt into every scene.
+    scene-chunk-max-tokens: 20000
+    # Number of books processed in parallel.
+    concurrent-books: 2
+    # Scene calls run in parallel per book, at most this many at once.
+    scene-parallelism: 4

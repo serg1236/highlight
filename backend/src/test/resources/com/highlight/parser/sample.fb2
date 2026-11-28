@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FictionBook xmlns="http://www.gribuser.ru/xml/fictionbook/2.0" xmlns:l="http://www.w3.org/1999/xlink">
+	<description>
+		<title-info>
+			<author>
+				<first-name>Lesya</first-name>
+				<last-name>Writer</last-name>
+			</author>
+			<book-title>Forest Song</book-title>
+			<lang>uk</lang>
+		</title-info>
+	</description>
+	<body>
+		<title><p>Forest Song</p></title>
+		<section>
+			<title><p>Part One</p></title>
+			<p>Part intro.</p>
+			<section>
+				<title><p>Chapter 1</p></title>
+				<p>Mavka had   long green
+				hair.</p>
+				<poem><stanza><v>Line one</v><v>Line two</v></stanza></poem>
+			</section>
+			<section>
+				<title><p>Chapter 2</p></title>
+				<p>Lukash wore a white shirt.</p>
+			</section>
+		</section>
+	</body>
+	<body name="notes">
+		<section id="n1"><p>A note that must be skipped.</p></section>
+	</body>
+</FictionBook>

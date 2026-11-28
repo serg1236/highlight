@@ -4,6 +4,7 @@
 *.iml
 *.ipr
 out/
+.run/
 
 ### Eclipse ###
 .apt_generated

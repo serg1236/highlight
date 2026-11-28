@@ -1,0 +1,270 @@
+{
+  "info": {
+    "name": "highlight-backend",
+    "description": "Book upload and extraction API: characters, scenes, locations and world setting.\n\nTypical flow: Upload book → poll Get book until status is READY (or FAILED) → List characters → Get character state at offset → List scenes / List locations / Get setting.\n\nUpload stores the new book id in `bookId`; List characters stores the first character's id in `characterId`.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "bookId",
+      "value": "1"
+    },
+    {
+      "key": "characterId",
+      "value": "1"
+    },
+    {
+      "key": "offset",
+      "value": "0"
+    }
+  ],
+  "item": [
+    {
+      "name": "Books",
+      "item": [
+        {
+          "name": "Upload book",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 202', () => pm.response.to.have.status(202));",
+                  "if (pm.response.code === 202) {",
+                  "    pm.collectionVariables.set('bookId', pm.response.json().id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": [],
+                  "description": "An .epub, .fb2 or .txt file (TXT must be UTF-8). Max 50MB by default."
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/books",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "books"
+              ]
+            },
+            "description": "Parses and stores the book, returns 202 with status UPLOADED, and starts extraction (characters, scenes, locations, setting) in the background.\n\nErrors: 400 for an unsupported extension or unparseable file, 413 when the file is too large."
+          }
+        },
+        {
+          "name": "List books",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/books",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "books"
+              ]
+            },
+            "description": "All books, newest first."
+          }
+        },
+        {
+          "name": "Get book",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/books/{{bookId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "books",
+                "{{bookId}}"
+              ]
+            },
+            "description": "Status (UPLOADED, EXTRACTING_CHARACTERS, EXTRACTING_SCENES, READY, FAILED), progress (chunksDone/chunksTotal), token usage and costUsd. Poll this after upload.\n\nErrors: 404 for an unknown id."
+          }
+        },
+        {
+          "name": "Delete book",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/books/{{bookId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "books",
+                "{{bookId}}"
+              ]
+            },
+            "description": "Deletes the book with its text, chapters and characters. Returns 204.\n\nErrors: 404 for an unknown id."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Characters",
+      "item": [
+        {
+          "name": "List characters",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "const characters = pm.response.code === 200 ? pm.response.json() : [];",
+                  "if (characters.length > 0) {",
+                  "    pm.collectionVariables.set('characterId', characters[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/books/{{bookId}}/characters",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "books",
+                "{{bookId}}",
+                "characters"
+              ]
+            },
+            "description": "Characters of the book ordered by first appearance, each with aliases and appearance/clothing observations (description, verbatim quote, startOffset/endOffset, chapterId, explicitChange).\n\nErrors: 404 for an unknown book id."
+          }
+        },
+        {
+          "name": "Get character state at offset",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/characters/{{characterId}}/state?offset={{offset}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "characters",
+                "{{characterId}}",
+                "state"
+              ],
+              "query": [
+                {
+                  "key": "offset",
+                  "value": "{{offset}}",
+                  "description": "Character offset in the book text (>= 0)."
+                }
+              ]
+            },
+            "description": "Latest appearance and clothing observation per category at or before the offset. Observations without a located quote are ignored.\n\nErrors: 400 for a missing or negative offset, 404 for an unknown character id."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Story",
+      "item": [
+        {
+          "name": "List scenes",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/books/{{bookId}}/scenes?dialogOnly=false",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "books",
+                "{{bookId}}",
+                "scenes"
+              ],
+              "query": [
+                {
+                  "key": "dialogOnly",
+                  "value": "false",
+                  "description": "true: only scenes in which characters speak"
+                }
+              ]
+            },
+            "description": "Scenes in reading order, each with offsets, summary, location, time of day, timeline shift and the characters present (with whether they speak). Set dialogOnly=true to keep only scenes with dialog.\n\nErrors: 404 for an unknown book."
+          }
+        },
+        {
+          "name": "List locations",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/books/{{bookId}}/locations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "books",
+                "{{bookId}}",
+                "locations"
+              ]
+            },
+            "description": "Locations ordered by first appearance, each with one merged visual description.\n\nErrors: 404 for an unknown book."
+          }
+        },
+        {
+          "name": "Get setting",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/books/{{bookId}}/setting",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "books",
+                "{{bookId}}",
+                "setting"
+              ]
+            },
+            "description": "World setting (realism, genre, period with CITED/INFERRED source, region, technology, clothing norms, architecture, visual mood, promptLine for image prompts) and the cited clues it was built from.\n\nErrors: 404 for an unknown book or while the setting has not been extracted yet."
+          }
+        }
+      ]
+    }
+  ]
+}
